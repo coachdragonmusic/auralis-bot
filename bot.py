@@ -112,6 +112,7 @@ class CategoryDeleteSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         category_id = int(self.values[0])
+
         category = discord.utils.get(
             interaction.guild.categories,
             id=category_id
@@ -129,7 +130,7 @@ class CategoryDeleteSelect(discord.ui.Select):
             ephemeral=True
         )
 
-        for channel in category.channels:
+        for channel in list(category.channels):
             await channel.delete(
                 reason=f"Deleted by {interaction.user}"
             )
@@ -183,6 +184,112 @@ async def clean_categories(interaction: discord.Interaction):
 
     await interaction.response.send_message(
         "Pick the category you want to delete:",
+        view=view,
+        ephemeral=True
+    )
+
+
+# ─────────────────────────────────────────────
+# Multi Channel Delete Dropdown
+# ─────────────────────────────────────────────
+
+class ChannelDeleteSelect(discord.ui.Select):
+    def __init__(self, channels):
+        options = [
+            discord.SelectOption(
+                label=channel.name[:100],
+                value=str(channel.id)
+            )
+            for channel in channels[:25]
+        ]
+
+        super().__init__(
+            placeholder="Choose channels to delete...",
+            min_values=1,
+            max_values=min(len(options), 25),
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        deleted_channels = []
+
+        await interaction.response.defer(ephemeral=True)
+
+        for value in self.values:
+            channel_id = int(value)
+
+            channel = discord.utils.get(
+                interaction.guild.text_channels,
+                id=channel_id
+            )
+
+            if channel is not None:
+                deleted_channels.append(channel.name)
+
+                await channel.delete(
+                    reason=f"Deleted by {interaction.user}"
+                )
+
+        if deleted_channels:
+            deleted_text = "\n".join(
+                [f"• #{name}" for name in deleted_channels]
+            )
+
+            await interaction.followup.send(
+                f"Deleted channels:\n{deleted_text}",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "No valid channels found.",
+                ephemeral=True
+            )
+
+
+class ChannelDeleteView(discord.ui.View):
+    def __init__(self, channels):
+        super().__init__(timeout=60)
+        self.add_item(ChannelDeleteSelect(channels))
+
+
+# ─────────────────────────────────────────────
+# /clean_channels Command
+# ─────────────────────────────────────────────
+
+@tree.command(
+    name="clean_channels",
+    description="Delete multiple text channels from a dropdown."
+)
+async def clean_channels(interaction: discord.Interaction):
+    guild = interaction.guild
+
+    if guild is None:
+        await interaction.response.send_message(
+            "This command only works in a server.",
+            ephemeral=True
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_channels:
+        await interaction.response.send_message(
+            "You need Manage Channels permission to use this.",
+            ephemeral=True
+        )
+        return
+
+    channels = guild.text_channels
+
+    if not channels:
+        await interaction.response.send_message(
+            "No text channels found.",
+            ephemeral=True
+        )
+        return
+
+    view = ChannelDeleteView(channels)
+
+    await interaction.response.send_message(
+        "Pick the channels you want to delete:",
         view=view,
         ephemeral=True
     )
