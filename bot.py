@@ -20,6 +20,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
@@ -31,9 +32,7 @@ tree = app_commands.CommandTree(client)
 
 UPDATE_CHANNEL_NAME = "song-updates"
 COLLAB_CATEGORY_NAME = "📢 Collaboration"
-
-# Replace this with the Discord user ID you want to notify
-NOTIFY_USER_ID = 123456789012345678
+NOTIFY_USERNAME = "mizuki17"
 
 
 # ─────────────────────────────────────────────
@@ -45,6 +44,37 @@ def clean_channel_name(title: str) -> str:
     name = re.sub(r"[^a-z0-9\s-]", "", name)
     name = re.sub(r"\s+", "-", name)
     return name[:80]
+
+
+def clean_song_category_name(category_name: str) -> str:
+    name = category_name.replace("🎵", "").strip()
+    return clean_channel_name(name)
+
+
+def is_song_category(category: discord.CategoryChannel) -> bool:
+    if category.name.startswith("🎵"):
+        return True
+
+    song_channel_keywords = [
+        "lyrics",
+        "prompts",
+        "revisions",
+        "mixing-notes",
+        "final-exports",
+        "song-demos"
+    ]
+
+    channel_names = [channel.name for channel in category.channels]
+
+    matches = 0
+
+    for channel_name in channel_names:
+        for keyword in song_channel_keywords:
+            if keyword in channel_name:
+                matches += 1
+                break
+
+    return matches >= 2
 
 
 async def get_or_create_update_channel(guild: discord.Guild):
@@ -74,6 +104,22 @@ async def get_or_create_update_channel(guild: discord.Guild):
     return update_channel
 
 
+def find_notify_member(guild: discord.Guild):
+    username = NOTIFY_USERNAME.lower().replace("@", "")
+
+    for member in guild.members:
+        if member.name and member.name.lower() == username:
+            return member
+
+        if member.display_name and member.display_name.lower() == username:
+            return member
+
+        if member.global_name and member.global_name.lower() == username:
+            return member
+
+    return None
+
+
 # ─────────────────────────────────────────────
 # Bot Ready Event
 # ─────────────────────────────────────────────
@@ -82,6 +128,77 @@ async def get_or_create_update_channel(guild: discord.Guild):
 async def on_ready():
     await tree.sync()
     print(f"Auralis is online as {client.user}")
+
+
+# ─────────────────────────────────────────────
+# /n Message Listener
+# ─────────────────────────────────────────────
+
+@client.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+
+    if message.guild is None:
+        return
+
+    if not message.content.startswith("/n "):
+        return
+
+    update_text = message.content[3:].strip()
+
+    if not update_text:
+        return
+
+    update_channel = await get_or_create_update_channel(message.guild)
+
+    try:
+        await message.edit(content=update_text)
+    except Exception as error:
+        print(f"Failed to edit message: {error}")
+
+    notify_member = find_notify_member(message.guild)
+    mention_text = notify_member.mention if notify_member else "@mizuki17"
+
+    now = discord.utils.utcnow()
+
+    embed = discord.Embed(
+        title="🔔 New Song Update",
+        description=update_text,
+        color=0x00FF7F
+    )
+
+    embed.add_field(
+        name="Channel",
+        value=message.channel.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Updated By",
+        value=message.author.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Time",
+        value=discord.utils.format_dt(now, style="F"),
+        inline=False
+    )
+
+    embed.set_footer(
+        text="Auralis • Song Collaboration Log"
+    )
+
+    await update_channel.send(
+        content=mention_text,
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions(
+            everyone=False,
+            users=True,
+            roles=False
+        )
+    )
 
 
 # ─────────────────────────────────────────────
@@ -119,6 +236,7 @@ async def newsong(interaction: discord.Interaction, title: str):
         f"{clean_name}-prompts",
         f"{clean_name}-revisions",
         f"{clean_name}-mixing-notes",
+        f"{clean_name}-song-demos",
         f"{clean_name}-final-exports"
     ]
 
@@ -126,6 +244,84 @@ async def newsong(interaction: discord.Interaction, title: str):
         await guild.create_text_channel(
             channel_name,
             category=category
+        )
+
+
+# ─────────────────────────────────────────────
+# /add_demos_channels Command
+# ─────────────────────────────────────────────
+
+@tree.command(
+    name="add_demos_channels",
+    description="Add missing song-demos channels to existing song categories."
+)
+async def add_demos_channels(interaction: discord.Interaction):
+    guild = interaction.guild
+
+    if guild is None:
+        await interaction.response.send_message(
+            "This command only works in a server.",
+            ephemeral=True
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_channels:
+        await interaction.response.send_message(
+            "You need Manage Channels permission to use this.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        "Scanning song categories for missing demo channels...",
+        ephemeral=True
+    )
+
+    added_channels = []
+    skipped_categories = []
+
+    for category in guild.categories:
+        if not is_song_category(category):
+            continue
+
+        clean_name = clean_song_category_name(category.name)
+        demo_channel_name = f"{clean_name}-song-demos"
+
+        existing_channel = discord.utils.get(
+            category.channels,
+            name=demo_channel_name
+        )
+
+        if existing_channel is not None:
+            skipped_categories.append(category.name)
+            continue
+
+        await guild.create_text_channel(
+            demo_channel_name,
+            category=category
+        )
+
+        added_channels.append(f"{category.name} → #{demo_channel_name}")
+
+    if added_channels:
+        added_text = "\n".join(
+            [f"• {item}" for item in added_channels]
+        )
+
+        embed = discord.Embed(
+            title="Song Demo Channels Added",
+            description=added_text,
+            color=0x00FF7F
+        )
+
+        await interaction.followup.send(
+            embed=embed,
+            ephemeral=True
+        )
+    else:
+        await interaction.followup.send(
+            "No missing song demo channels found.",
+            ephemeral=True
         )
 
 
@@ -254,8 +450,6 @@ class ChannelDeleteSelect(discord.ui.Select):
             ephemeral=True
         )
 
-        deleted_channels = []
-
         for value in self.values:
             channel_id = int(value)
 
@@ -265,8 +459,6 @@ class ChannelDeleteSelect(discord.ui.Select):
             )
 
             if channel is not None:
-                deleted_channels.append(channel.name)
-
                 try:
                     await channel.delete(
                         reason=f"Deleted by {interaction.user}"
@@ -325,76 +517,53 @@ async def clean_channels(interaction: discord.Interaction):
 
 
 # ─────────────────────────────────────────────
-# /n Notify Update Command
+# /help Command
 # ─────────────────────────────────────────────
 
 @tree.command(
-    name="n",
-    description="Log a song update and notify your collaborator."
+    name="help",
+    description="Show Auralis command list."
 )
-@app_commands.describe(message="Your song update message")
-async def notify_update(
-    interaction: discord.Interaction,
-    message: str
-):
-    guild = interaction.guild
-
-    if guild is None:
-        await interaction.response.send_message(
-            "This command only works in a server.",
-            ephemeral=True
-        )
-        return
-
-    await interaction.response.send_message(
-        "Song update logged.",
-        ephemeral=True
-    )
-
-    update_channel = await get_or_create_update_channel(guild)
-
-    notify_member = guild.get_member(NOTIFY_USER_ID)
-
-    mention_text = ""
-    if notify_member is not None:
-        mention_text = notify_member.mention
-
-    timestamp = discord.utils.format_dt(
-        discord.utils.utcnow(),
-        style="F"
-    )
-
+async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🔔 New Song Update",
-        description=message,
-        color=discord.Color.blurple()
+        title="Auralis Commands",
+        description="Clean tools for organizing song projects and collaboration updates.",
+        color=0x00FF7F
     )
 
     embed.add_field(
-        name="Channel",
-        value=interaction.channel.mention,
-        inline=True
-    )
-
-    embed.add_field(
-        name="Updated By",
-        value=interaction.user.mention,
-        inline=True
-    )
-
-    embed.add_field(
-        name="Time",
-        value=timestamp,
+        name="/newsong title:",
+        value="Creates a full organized song project with lyrics, prompts, revisions, mixing notes, song demos, and final exports.",
         inline=False
     )
 
-    embed.set_footer(
-        text="Auralis • Song Collaboration Log"
+    embed.add_field(
+        name="/add_demos_channels",
+        value="Scans existing song categories and adds missing song-demos channels.",
+        inline=False
     )
 
-    await update_channel.send(
-        content=mention_text,
-        embed=embed
+    embed.add_field(
+        name="/clean_channels",
+        value="Bulk-delete text channels from a dropdown.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/clean_categories",
+        value="Delete an entire category and its channels from a dropdown.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/n message",
+        value="Type `/n your update` in any song channel. Auralis cleans the original message, logs it in #song-updates, and pings Mizuki17.",
+        inline=False
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True
     )
 
 
