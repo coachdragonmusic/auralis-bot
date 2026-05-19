@@ -32,7 +32,11 @@ tree = app_commands.CommandTree(client)
 
 UPDATE_CHANNEL_NAME = "song-updates"
 COLLAB_CATEGORY_NAME = "📢 Collaboration"
-NOTIFY_USERNAME = "mizuki17"
+
+COLLABORATORS = [
+    "CoachDragon",
+    "mizuki17"
+]
 
 
 # ─────────────────────────────────────────────
@@ -60,8 +64,8 @@ def is_song_category(category: discord.CategoryChannel) -> bool:
         "prompts",
         "revisions",
         "mixing-notes",
-        "final-exports",
-        "song-demos"
+        "song-demos",
+        "final-exports"
     ]
 
     channel_names = [channel.name for channel in category.channels]
@@ -104,20 +108,40 @@ async def get_or_create_update_channel(guild: discord.Guild):
     return update_channel
 
 
-def find_notify_member(guild: discord.Guild):
-    username = NOTIFY_USERNAME.lower().replace("@", "")
+def find_collaborators_to_notify(
+    guild: discord.Guild,
+    author: discord.Member
+):
+    members_to_notify = []
 
     for member in guild.members:
-        if member.name and member.name.lower() == username:
-            return member
 
-        if member.display_name and member.display_name.lower() == username:
-            return member
+        if member.bot:
+            continue
 
-        if member.global_name and member.global_name.lower() == username:
-            return member
+        if member.id == author.id:
+            continue
 
-    return None
+        for collaborator in COLLABORATORS:
+
+            username = collaborator.lower().replace("@", "")
+
+            matched = False
+
+            if member.name and member.name.lower() == username:
+                matched = True
+
+            if member.display_name and member.display_name.lower() == username:
+                matched = True
+
+            if member.global_name and member.global_name.lower() == username:
+                matched = True
+
+            if matched:
+                members_to_notify.append(member)
+                break
+
+    return members_to_notify
 
 
 # ─────────────────────────────────────────────
@@ -131,34 +155,64 @@ async def on_ready():
 
 
 # ─────────────────────────────────────────────
-# /n Message Listener
+# Clean Collaboration Message System
 # ─────────────────────────────────────────────
 
 @client.event
 async def on_message(message: discord.Message):
+
     if message.author.bot:
         return
 
     if message.guild is None:
         return
 
-    if not message.content.startswith("/n "):
+    if not message.content.startswith("n "):
         return
 
-    update_text = message.content[3:].strip()
+    update_text = message.content[2:].strip()
 
     if not update_text:
         return
 
-    update_channel = await get_or_create_update_channel(message.guild)
+    update_channel = await get_or_create_update_channel(
+        message.guild
+    )
+
+    # ─────────────────────────────────────────
+    # Delete Original Raw Message
+    # ─────────────────────────────────────────
 
     try:
-        await message.edit(content=update_text)
+        await message.delete()
     except Exception as error:
-        print(f"Failed to edit message: {error}")
+        print(f"Failed to delete message: {error}")
 
-    notify_member = find_notify_member(message.guild)
-    mention_text = notify_member.mention if notify_member else "@mizuki17"
+    # ─────────────────────────────────────────
+    # Repost Clean Message As Bot
+    # ─────────────────────────────────────────
+
+    try:
+        await message.channel.send(update_text)
+    except Exception as error:
+        print(f"Failed to repost message: {error}")
+
+    # ─────────────────────────────────────────
+    # Determine Collaborators To Notify
+    # ─────────────────────────────────────────
+
+    notify_members = find_collaborators_to_notify(
+        message.guild,
+        message.author
+    )
+
+    mention_text = " ".join(
+        [member.mention for member in notify_members]
+    )
+
+    # ─────────────────────────────────────────
+    # Build Update Embed
+    # ─────────────────────────────────────────
 
     now = discord.utils.utcnow()
 
@@ -190,6 +244,10 @@ async def on_message(message: discord.Message):
         text="Auralis • Song Collaboration Log"
     )
 
+    # ─────────────────────────────────────────
+    # Send Update Log
+    # ─────────────────────────────────────────
+
     await update_channel.send(
         content=mention_text,
         embed=embed,
@@ -211,6 +269,7 @@ async def on_message(message: discord.Message):
 )
 @app_commands.describe(title="Song title")
 async def newsong(interaction: discord.Interaction, title: str):
+
     guild = interaction.guild
 
     if guild is None:
@@ -256,6 +315,7 @@ async def newsong(interaction: discord.Interaction, title: str):
     description="Add missing song-demos channels to existing song categories."
 )
 async def add_demos_channels(interaction: discord.Interaction):
+
     guild = interaction.guild
 
     if guild is None:
@@ -273,19 +333,24 @@ async def add_demos_channels(interaction: discord.Interaction):
         return
 
     await interaction.response.send_message(
-        "Scanning song categories for missing demo channels...",
+        "Scanning song categories...",
         ephemeral=True
     )
 
     added_channels = []
-    skipped_categories = []
 
     for category in guild.categories:
+
         if not is_song_category(category):
             continue
 
-        clean_name = clean_song_category_name(category.name)
-        demo_channel_name = f"{clean_name}-song-demos"
+        clean_name = clean_song_category_name(
+            category.name
+        )
+
+        demo_channel_name = (
+            f"{clean_name}-song-demos"
+        )
 
         existing_channel = discord.utils.get(
             category.channels,
@@ -293,7 +358,6 @@ async def add_demos_channels(interaction: discord.Interaction):
         )
 
         if existing_channel is not None:
-            skipped_categories.append(category.name)
             continue
 
         await guild.create_text_channel(
@@ -301,9 +365,12 @@ async def add_demos_channels(interaction: discord.Interaction):
             category=category
         )
 
-        added_channels.append(f"{category.name} → #{demo_channel_name}")
+        added_channels.append(
+            f"{category.name} → #{demo_channel_name}"
+        )
 
     if added_channels:
+
         added_text = "\n".join(
             [f"• {item}" for item in added_channels]
         )
@@ -318,9 +385,11 @@ async def add_demos_channels(interaction: discord.Interaction):
             embed=embed,
             ephemeral=True
         )
+
     else:
+
         await interaction.followup.send(
-            "No missing song demo channels found.",
+            "No missing demo channels found.",
             ephemeral=True
         )
 
@@ -330,7 +399,9 @@ async def add_demos_channels(interaction: discord.Interaction):
 # ─────────────────────────────────────────────
 
 class CategoryDeleteSelect(discord.ui.Select):
+
     def __init__(self, categories):
+
         options = [
             discord.SelectOption(
                 label=category.name[:100],
@@ -344,7 +415,8 @@ class CategoryDeleteSelect(discord.ui.Select):
             options=options
         )
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction):
+
         category_id = int(self.values[0])
 
         category = discord.utils.get(
@@ -360,24 +432,23 @@ class CategoryDeleteSelect(discord.ui.Select):
             return
 
         await interaction.response.send_message(
-            f"Deleting **{category.name}** and all channels inside it...",
+            f"Deleting **{category.name}**...",
             ephemeral=True
         )
 
         for channel in list(category.channels):
-            await channel.delete(
-                reason=f"Deleted by {interaction.user}"
-            )
+            await channel.delete()
 
-        await category.delete(
-            reason=f"Deleted by {interaction.user}"
-        )
+        await category.delete()
 
 
 class CategoryDeleteView(discord.ui.View):
+
     def __init__(self, categories):
         super().__init__(timeout=300)
-        self.add_item(CategoryDeleteSelect(categories))
+        self.add_item(
+            CategoryDeleteSelect(categories)
+        )
 
 
 # ─────────────────────────────────────────────
@@ -386,21 +457,15 @@ class CategoryDeleteView(discord.ui.View):
 
 @tree.command(
     name="clean_categories",
-    description="Choose a category from a dropdown and delete it."
+    description="Delete a category and all channels."
 )
-async def clean_categories(interaction: discord.Interaction):
+async def clean_categories(interaction):
+
     guild = interaction.guild
 
     if guild is None:
         await interaction.response.send_message(
             "This command only works in a server.",
-            ephemeral=True
-        )
-        return
-
-    if not interaction.user.guild_permissions.manage_channels:
-        await interaction.response.send_message(
-            "You need Manage Channels permission to use this.",
             ephemeral=True
         )
         return
@@ -417,7 +482,7 @@ async def clean_categories(interaction: discord.Interaction):
     view = CategoryDeleteView(categories)
 
     await interaction.response.send_message(
-        "Pick the category you want to delete:",
+        "Pick the category to delete:",
         view=view,
         ephemeral=True
     )
@@ -428,7 +493,9 @@ async def clean_categories(interaction: discord.Interaction):
 # ─────────────────────────────────────────────
 
 class ChannelDeleteSelect(discord.ui.Select):
+
     def __init__(self, channels):
+
         options = [
             discord.SelectOption(
                 label=channel.name[:100],
@@ -444,13 +511,15 @@ class ChannelDeleteSelect(discord.ui.Select):
             options=options
         )
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction):
+
         await interaction.response.send_message(
             "Deleting selected channels...",
             ephemeral=True
         )
 
         for value in self.values:
+
             channel_id = int(value)
 
             channel = discord.utils.get(
@@ -459,18 +528,20 @@ class ChannelDeleteSelect(discord.ui.Select):
             )
 
             if channel is not None:
+
                 try:
-                    await channel.delete(
-                        reason=f"Deleted by {interaction.user}"
-                    )
+                    await channel.delete()
                 except Exception as error:
-                    print(f"Failed to delete {channel.name}: {error}")
+                    print(error)
 
 
 class ChannelDeleteView(discord.ui.View):
+
     def __init__(self, channels):
         super().__init__(timeout=300)
-        self.add_item(ChannelDeleteSelect(channels))
+        self.add_item(
+            ChannelDeleteSelect(channels)
+        )
 
 
 # ─────────────────────────────────────────────
@@ -479,21 +550,15 @@ class ChannelDeleteView(discord.ui.View):
 
 @tree.command(
     name="clean_channels",
-    description="Delete multiple text channels from a dropdown."
+    description="Delete multiple channels."
 )
-async def clean_channels(interaction: discord.Interaction):
+async def clean_channels(interaction):
+
     guild = interaction.guild
 
     if guild is None:
         await interaction.response.send_message(
             "This command only works in a server.",
-            ephemeral=True
-        )
-        return
-
-    if not interaction.user.guild_permissions.manage_channels:
-        await interaction.response.send_message(
-            "You need Manage Channels permission to use this.",
             ephemeral=True
         )
         return
@@ -510,7 +575,7 @@ async def clean_channels(interaction: discord.Interaction):
     view = ChannelDeleteView(channels)
 
     await interaction.response.send_message(
-        "Pick the channels you want to delete:",
+        "Pick channels to delete:",
         view=view,
         ephemeral=True
     )
@@ -524,40 +589,50 @@ async def clean_channels(interaction: discord.Interaction):
     name="help",
     description="Show Auralis command list."
 )
-async def help_command(interaction: discord.Interaction):
+async def help_command(interaction):
+
     embed = discord.Embed(
         title="Auralis Commands",
-        description="Clean tools for organizing song projects and collaboration updates.",
+        description=(
+            "Organization and collaboration "
+            "tools for songwriting."
+        ),
         color=0x00FF7F
     )
 
     embed.add_field(
-        name="/newsong title:",
-        value="Creates a full organized song project with lyrics, prompts, revisions, mixing notes, song demos, and final exports.",
+        name="/newsong",
+        value="Create a full song project.",
         inline=False
     )
 
     embed.add_field(
         name="/add_demos_channels",
-        value="Scans existing song categories and adds missing song-demos channels.",
+        value=(
+            "Add missing song-demos "
+            "channels to old projects."
+        ),
         inline=False
     )
 
     embed.add_field(
         name="/clean_channels",
-        value="Bulk-delete text channels from a dropdown.",
+        value="Delete multiple channels.",
         inline=False
     )
 
     embed.add_field(
         name="/clean_categories",
-        value="Delete an entire category and its channels from a dropdown.",
+        value="Delete entire categories.",
         inline=False
     )
 
     embed.add_field(
-        name="/n message",
-        value="Type `/n your update` in any song channel. Auralis cleans the original message, logs it in #song-updates, and pings Mizuki17.",
+        name="n your message",
+        value=(
+            "Clean collaboration update "
+            "system with automatic tagging."
+        ),
         inline=False
     )
 
