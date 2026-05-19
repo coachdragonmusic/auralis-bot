@@ -26,6 +26,17 @@ tree = app_commands.CommandTree(client)
 
 
 # ─────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────
+
+UPDATE_CHANNEL_NAME = "song-updates"
+COLLAB_CATEGORY_NAME = "📢 Collaboration"
+
+# Replace this with the Discord user ID you want to notify
+NOTIFY_USER_ID = 123456789012345678
+
+
+# ─────────────────────────────────────────────
 # Helper Functions
 # ─────────────────────────────────────────────
 
@@ -34,6 +45,33 @@ def clean_channel_name(title: str) -> str:
     name = re.sub(r"[^a-z0-9\s-]", "", name)
     name = re.sub(r"\s+", "-", name)
     return name[:80]
+
+
+async def get_or_create_update_channel(guild: discord.Guild):
+    update_channel = discord.utils.get(
+        guild.text_channels,
+        name=UPDATE_CHANNEL_NAME
+    )
+
+    if update_channel is not None:
+        return update_channel
+
+    collaboration_category = discord.utils.get(
+        guild.categories,
+        name=COLLAB_CATEGORY_NAME
+    )
+
+    if collaboration_category is None:
+        collaboration_category = await guild.create_category(
+            COLLAB_CATEGORY_NAME
+        )
+
+    update_channel = await guild.create_text_channel(
+        UPDATE_CHANNEL_NAME,
+        category=collaboration_category
+    )
+
+    return update_channel
 
 
 # ─────────────────────────────────────────────
@@ -65,6 +103,11 @@ async def newsong(interaction: discord.Interaction, title: str):
         )
         return
 
+    await interaction.response.send_message(
+        f"Creating project for **{title}**...",
+        ephemeral=True
+    )
+
     clean_name = clean_channel_name(title)
 
     category = await guild.create_category(
@@ -84,11 +127,6 @@ async def newsong(interaction: discord.Interaction, title: str):
             channel_name,
             category=category
         )
-
-    await interaction.response.send_message(
-        f"Created project for **{title}**.",
-        ephemeral=True
-    )
 
 
 # ─────────────────────────────────────────────
@@ -142,7 +180,7 @@ class CategoryDeleteSelect(discord.ui.Select):
 
 class CategoryDeleteView(discord.ui.View):
     def __init__(self, categories):
-        super().__init__(timeout=60)
+        super().__init__(timeout=300)
         self.add_item(CategoryDeleteSelect(categories))
 
 
@@ -211,9 +249,12 @@ class ChannelDeleteSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        deleted_channels = []
+        await interaction.response.send_message(
+            "Deleting selected channels...",
+            ephemeral=True
+        )
 
-        await interaction.response.defer(ephemeral=True)
+        deleted_channels = []
 
         for value in self.values:
             channel_id = int(value)
@@ -226,29 +267,17 @@ class ChannelDeleteSelect(discord.ui.Select):
             if channel is not None:
                 deleted_channels.append(channel.name)
 
-                await channel.delete(
-                    reason=f"Deleted by {interaction.user}"
-                )
-
-        if deleted_channels:
-            deleted_text = "\n".join(
-                [f"• #{name}" for name in deleted_channels]
-            )
-
-            await interaction.followup.send(
-                f"Deleted channels:\n{deleted_text}",
-                ephemeral=True
-            )
-        else:
-            await interaction.followup.send(
-                "No valid channels found.",
-                ephemeral=True
-            )
+                try:
+                    await channel.delete(
+                        reason=f"Deleted by {interaction.user}"
+                    )
+                except Exception as error:
+                    print(f"Failed to delete {channel.name}: {error}")
 
 
 class ChannelDeleteView(discord.ui.View):
     def __init__(self, channels):
-        super().__init__(timeout=60)
+        super().__init__(timeout=300)
         self.add_item(ChannelDeleteSelect(channels))
 
 
@@ -292,6 +321,80 @@ async def clean_channels(interaction: discord.Interaction):
         "Pick the channels you want to delete:",
         view=view,
         ephemeral=True
+    )
+
+
+# ─────────────────────────────────────────────
+# /n Notify Update Command
+# ─────────────────────────────────────────────
+
+@tree.command(
+    name="n",
+    description="Log a song update and notify your collaborator."
+)
+@app_commands.describe(message="Your song update message")
+async def notify_update(
+    interaction: discord.Interaction,
+    message: str
+):
+    guild = interaction.guild
+
+    if guild is None:
+        await interaction.response.send_message(
+            "This command only works in a server.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        "Song update logged.",
+        ephemeral=True
+    )
+
+    update_channel = await get_or_create_update_channel(guild)
+
+    notify_member = guild.get_member(NOTIFY_USER_ID)
+
+    mention_text = ""
+    if notify_member is not None:
+        mention_text = notify_member.mention
+
+    timestamp = discord.utils.format_dt(
+        discord.utils.utcnow(),
+        style="F"
+    )
+
+    embed = discord.Embed(
+        title="🔔 New Song Update",
+        description=message,
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="Channel",
+        value=interaction.channel.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Updated By",
+        value=interaction.user.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Time",
+        value=timestamp,
+        inline=False
+    )
+
+    embed.set_footer(
+        text="Auralis • Song Collaboration Log"
+    )
+
+    await update_channel.send(
+        content=mention_text,
+        embed=embed
     )
 
 
