@@ -333,7 +333,6 @@ async def on_message(message: discord.Message):
 # ─────────────────────────────────────────────
 
 async def handle_clean_update_message(message: discord.Message):
-    # Matches 'n' or 'N' at the start of a message followed by punctuation/spaces
     match = re.match(
         r"^\s*([nN])[\s:,-]+(.+)$",
         message.content
@@ -347,7 +346,6 @@ async def handle_clean_update_message(message: discord.Message):
     if not update_text:
         return False
 
-    # Delete the original "n update text" trigger message
     try:
         await message.delete()
     except Exception as error:
@@ -869,5 +867,8 @@ async def help_command(interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-# Don't forget to run your client at the bottom of your script!
-# client.run(TOKEN)
+# ─────────────────────────────────────────────
+# Launch Bot Execution
+# ─────────────────────────────────────────────
+
+client.run(TOKEN)
