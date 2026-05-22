@@ -38,6 +38,14 @@ COLLABORATORS = [
     "mizuki17"
 ]
 
+AUDIO_EXTENSIONS = [
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".flac",
+    ".ogg"
+]
+
 
 # ─────────────────────────────────────────────
 # Helper Functions
@@ -55,11 +63,22 @@ def clean_song_category_name(category_name: str) -> str:
     return clean_channel_name(name)
 
 
+def get_song_name_from_channel(channel_name: str) -> str:
+    name = channel_name.replace("-song-demos", "")
+    name = name.replace("-", " ")
+    return name.title()
+
+
+def is_audio_file(filename: str) -> bool:
+    lowered = filename.lower()
+    return any(lowered.endswith(ext) for ext in AUDIO_EXTENSIONS)
+
+
 def is_song_category(category: discord.CategoryChannel) -> bool:
     if category.name.startswith("🎵"):
         return True
 
-    song_channel_keywords = [
+    keywords = [
         "lyrics",
         "prompts",
         "revisions",
@@ -68,13 +87,11 @@ def is_song_category(category: discord.CategoryChannel) -> bool:
         "final-exports"
     ]
 
-    channel_names = [channel.name for channel in category.channels]
-
     matches = 0
 
-    for channel_name in channel_names:
-        for keyword in song_channel_keywords:
-            if keyword in channel_name:
+    for channel in category.channels:
+        for keyword in keywords:
+            if keyword in channel.name:
                 matches += 1
                 break
 
@@ -123,7 +140,6 @@ def find_collaborators_to_notify(
             continue
 
         for collaborator in COLLABORATORS:
-
             username = collaborator.lower().replace("@", "")
 
             matched = False
@@ -144,6 +160,20 @@ def find_collaborators_to_notify(
     return members_to_notify
 
 
+def build_mentions(
+    guild: discord.Guild,
+    author: discord.Member
+):
+    notify_members = find_collaborators_to_notify(
+        guild,
+        author
+    )
+
+    return " ".join(
+        [member.mention for member in notify_members]
+    )
+
+
 # ─────────────────────────────────────────────
 # Bot Ready Event
 # ─────────────────────────────────────────────
@@ -155,7 +185,7 @@ async def on_ready():
 
 
 # ─────────────────────────────────────────────
-# Clean Collaboration Message System
+# Message Listener
 # ─────────────────────────────────────────────
 
 @client.event
@@ -166,6 +196,16 @@ async def on_message(message: discord.Message):
 
     if message.guild is None:
         return
+
+    await handle_clean_update_message(message)
+    await handle_demo_upload_message(message)
+
+
+# ─────────────────────────────────────────────
+# Clean Collaboration Update System
+# ─────────────────────────────────────────────
+
+async def handle_clean_update_message(message: discord.Message):
 
     if not message.content.startswith("n "):
         return
@@ -179,40 +219,20 @@ async def on_message(message: discord.Message):
         message.guild
     )
 
-    # ─────────────────────────────────────────
-    # Delete Original Raw Message
-    # ─────────────────────────────────────────
-
     try:
         await message.delete()
     except Exception as error:
         print(f"Failed to delete message: {error}")
-
-    # ─────────────────────────────────────────
-    # Repost Clean Message As Bot
-    # ─────────────────────────────────────────
 
     try:
         await message.channel.send(update_text)
     except Exception as error:
         print(f"Failed to repost message: {error}")
 
-    # ─────────────────────────────────────────
-    # Determine Collaborators To Notify
-    # ─────────────────────────────────────────
-
-    notify_members = find_collaborators_to_notify(
+    mention_text = build_mentions(
         message.guild,
         message.author
     )
-
-    mention_text = " ".join(
-        [member.mention for member in notify_members]
-    )
-
-    # ─────────────────────────────────────────
-    # Build Update Embed
-    # ─────────────────────────────────────────
 
     now = discord.utils.utcnow()
 
@@ -244,9 +264,111 @@ async def on_message(message: discord.Message):
         text="Auralis • Song Collaboration Log"
     )
 
-    # ─────────────────────────────────────────
-    # Send Update Log
-    # ─────────────────────────────────────────
+    await update_channel.send(
+        content=mention_text,
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions(
+            everyone=False,
+            users=True,
+            roles=False
+        )
+    )
+
+
+# ─────────────────────────────────────────────
+# Automatic Demo Upload System
+# ─────────────────────────────────────────────
+
+async def handle_demo_upload_message(message: discord.Message):
+
+    if "song-demos" not in message.channel.name:
+        return
+
+    if not message.attachments:
+        return
+
+    audio_files = [
+        attachment for attachment in message.attachments
+        if is_audio_file(attachment.filename)
+    ]
+
+    if not audio_files:
+        return
+
+    update_channel = await get_or_create_update_channel(
+        message.guild
+    )
+
+    mention_text = build_mentions(
+        message.guild,
+        message.author
+    )
+
+    now = discord.utils.utcnow()
+
+    song_name = get_song_name_from_channel(
+        message.channel.name
+    )
+
+    note_text = message.content.strip()
+
+    if not note_text:
+        note_text = "No notes provided."
+
+    file_text = "\n".join(
+        [f"• {attachment.filename}" for attachment in audio_files]
+    )
+
+    embed = discord.Embed(
+        title="🎧 New Demo Uploaded",
+        color=0x00FF7F
+    )
+
+    embed.add_field(
+        name="Song",
+        value=song_name,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Channel",
+        value=message.channel.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Uploaded By",
+        value=message.author.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="File",
+        value=file_text,
+        inline=False
+    )
+
+    embed.add_field(
+        name="Notes",
+        value=note_text,
+        inline=False
+    )
+
+    embed.add_field(
+        name="Time",
+        value=discord.utils.format_dt(now, style="F"),
+        inline=False
+    )
+
+    embed.add_field(
+        name="Original Upload",
+        value=f"[Open Original Upload]({message.jump_url})",
+        inline=False
+    )
+
+    embed.set_footer(
+        text="Auralis • Demo Upload Log"
+    )
 
     await update_channel.send(
         content=mention_text,
@@ -632,6 +754,16 @@ async def help_command(interaction):
         value=(
             "Clean collaboration update "
             "system with automatic tagging."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="Demo Uploads",
+        value=(
+            "Upload MP3, WAV, M4A, FLAC, or OGG files "
+            "inside any song-demos channel. Auralis logs it "
+            "in #song-updates and tags the other collaborator."
         ),
         inline=False
     )
