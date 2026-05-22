@@ -45,7 +45,24 @@ AUDIO_EXTENSIONS = [
     ".flac",
     ".ogg"
 ]
+AURALIS_UPDATE_CHANNEL = "auralis-update-log"
 
+BOT_VERSION = "1.8.0"
+
+BOT_UPDATE_NOTES = [
+    "Added N/n clean collaboration updates.",
+    "Added automatic demo upload tracking.",
+    "Added song-demos channels.",
+    "Added /add_demos_channels.",
+    "Added collaborator auto-tagging.",
+    "Added song update logging."
+]
+
+UPDATE_NOTIFY_USERS = [
+    "mizuki17"
+]
+
+startup_log_posted = False
 
 # ─────────────────────────────────────────────
 # Helper Functions
@@ -172,7 +189,61 @@ def build_mentions(
     return " ".join(
         [member.mention for member in notify_members]
     )
+async def get_or_create_auralis_update_channel(
+    guild: discord.Guild
+):
+    channel = discord.utils.get(
+        guild.text_channels,
+        name=AURALIS_UPDATE_CHANNEL
+    )
 
+    if channel is not None:
+        return channel
+
+    return await guild.create_text_channel(
+        AURALIS_UPDATE_CHANNEL
+    )
+
+
+def build_update_log_mentions(
+    guild: discord.Guild
+):
+    mentions = []
+
+    for member in guild.members:
+
+        for username in UPDATE_NOTIFY_USERS:
+
+            clean_name = (
+                username.lower()
+                .replace("@", "")
+            )
+
+            matched = False
+
+            if member.name and member.name.lower() == clean_name:
+                matched = True
+
+            elif (
+                member.display_name
+                and member.display_name.lower() == clean_name
+            ):
+                matched = True
+
+            elif (
+                member.global_name
+                and member.global_name.lower() == clean_name
+            ):
+                matched = True
+
+            if matched:
+                mentions.append(
+                    member.mention
+                )
+
+    return " ".join(
+        list(set(mentions))
+    )
 
 # ─────────────────────────────────────────────
 # Bot Ready Event
@@ -180,8 +251,76 @@ def build_mentions(
 
 @client.event
 async def on_ready():
+
+    global startup_log_posted
+
     await tree.sync()
-    print(f"Auralis is online as {client.user}")
+
+    print(
+        f"Auralis is online as {client.user}"
+    )
+
+    if startup_log_posted:
+        return
+
+    startup_log_posted = True
+
+    for guild in client.guilds:
+
+        update_channel = (
+            await get_or_create_auralis_update_channel(
+                guild
+            )
+        )
+
+        notes_text = "\n".join(
+            [
+                f"• {note}"
+                for note in BOT_UPDATE_NOTES
+            ]
+        )
+
+        embed = discord.Embed(
+            title="🚀 Auralis Updated",
+            description=(
+                "Auralis is online with the latest update."
+            ),
+            color=0x00FF7F
+        )
+
+        embed.add_field(
+            name="Version",
+            value=BOT_VERSION,
+            inline=True
+        )
+
+        embed.add_field(
+            name="Status",
+            value="Online",
+            inline=True
+        )
+
+        embed.add_field(
+            name="Changes",
+            value=notes_text,
+            inline=False
+        )
+
+        embed.set_footer(
+            text="Auralis • Update Log"
+        )
+
+        await update_channel.send(
+            content=build_update_log_mentions(
+                guild
+            ),
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(
+                users=True,
+                roles=False,
+                everyone=False
+            )
+        )
 
 
 # ─────────────────────────────────────────────
@@ -207,7 +346,7 @@ async def on_message(message: discord.Message):
 
 async def handle_clean_update_message(message: discord.Message):
 
-    if not message.content.startswith("n "):
+    if not message.content.lower().startswith("n "):
         return
 
     update_text = message.content[2:].strip()
@@ -220,14 +359,11 @@ async def handle_clean_update_message(message: discord.Message):
     )
 
     try:
-        await message.delete()
+        await message.edit(
+            content=update_text
+        )
     except Exception as error:
-        print(f"Failed to delete message: {error}")
-
-    try:
-        await message.channel.send(update_text)
-    except Exception as error:
-        print(f"Failed to repost message: {error}")
+        print(f"Failed to edit message: {error}")
 
     mention_text = build_mentions(
         message.guild,
@@ -257,6 +393,12 @@ async def handle_clean_update_message(message: discord.Message):
     embed.add_field(
         name="Time",
         value=discord.utils.format_dt(now, style="F"),
+        inline=False
+    )
+
+    embed.add_field(
+        name="Original Message",
+        value=f"[Open Message]({message.jump_url})",
         inline=False
     )
 
@@ -750,10 +892,12 @@ async def help_command(interaction):
     )
 
     embed.add_field(
-        name="n your message",
+        name="n / N your message",
         value=(
-            "Clean collaboration update "
-            "system with automatic tagging."
+            "Type `n your update` or `N your update`. "
+            "Auralis edits your message cleanly, removes "
+            "the prompt, logs it in #song-updates, and tags "
+            "the other collaborator."
         ),
         inline=False
     )
