@@ -34,7 +34,7 @@ UPDATE_CHANNEL_NAME = "song-updates"
 COLLAB_CATEGORY_NAME = "📢 Collaboration"
 AURALIS_UPDATE_CHANNEL = "auralis-update-log"
 
-BOT_VERSION = "1.0"
+BOT_VERSION = "1.1"
 
 BOT_UPDATE_NOTES = [
     "Initial Auralis release.",
@@ -48,6 +48,7 @@ BOT_UPDATE_NOTES = [
     "Added /add_demos_channels for older song projects.",
     "Added automatic demo upload tracking for MP3, WAV, M4A, FLAC, and OGG files.",
     "Added #auralis-update-log deployment logging."
+    "Added clean author-attributed update reposting.",
 ]
 
 COLLABORATORS = [
@@ -356,9 +357,11 @@ async def handle_clean_update_message(message: discord.Message):
         print(f"Failed to delete raw update message: {error}")
 
     try:
-        await message.channel.send(update_text)
-    except Exception as error:
-        print(f"Failed to repost clean update message: {error}")
+    await message.channel.send(
+        f"📝 **{message.author.display_name}**\n\n{update_text}"
+    )
+except Exception as error:
+    print(f"Failed to repost clean update message: {error}")
 
     mention_text = build_mentions(
         message.guild,
