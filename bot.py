@@ -510,5 +510,3 @@ async def help_command(interaction: discord.Interaction):
 # ─────────────────────────────────────────────
 
 client.run(TOKEN)
-
-```
