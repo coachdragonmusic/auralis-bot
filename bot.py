@@ -32,9 +32,30 @@ tree = app_commands.CommandTree(client)
 
 UPDATE_CHANNEL_NAME = "song-updates"
 COLLAB_CATEGORY_NAME = "📢 Collaboration"
+AURALIS_UPDATE_CHANNEL = "auralis-update-log"
+
+BOT_VERSION = "1.0"
+
+BOT_UPDATE_NOTES = [
+    "Initial Auralis release.",
+    "Added /newsong for organized song project creation.",
+    "Added /clean_channels for bulk channel cleanup.",
+    "Added /clean_categories for category cleanup.",
+    "Added N/n collaboration updates.",
+    "Added automatic collaborator tagging.",
+    "Added #song-updates logging.",
+    "Added song-demos channels.",
+    "Added /add_demos_channels for older song projects.",
+    "Added automatic demo upload tracking for MP3, WAV, M4A, FLAC, and OGG files.",
+    "Added #auralis-update-log deployment logging."
+]
 
 COLLABORATORS = [
     "CoachDragon",
+    "mizuki17"
+]
+
+UPDATE_NOTIFY_USERS = [
     "mizuki17"
 ]
 
@@ -45,24 +66,9 @@ AUDIO_EXTENSIONS = [
     ".flac",
     ".ogg"
 ]
-AURALIS_UPDATE_CHANNEL = "auralis-update-log"
-
-BOT_VERSION = "1.8.0"
-
-BOT_UPDATE_NOTES = [
-    "Added N/n clean collaboration updates.",
-    "Added automatic demo upload tracking.",
-    "Added song-demos channels.",
-    "Added /add_demos_channels.",
-    "Added collaborator auto-tagging.",
-    "Added song update logging."
-]
-
-UPDATE_NOTIFY_USERS = [
-    "mizuki17"
-]
 
 startup_log_posted = False
+
 
 # ─────────────────────────────────────────────
 # Helper Functions
@@ -116,65 +122,82 @@ def is_song_category(category: discord.CategoryChannel) -> bool:
 
 
 async def get_or_create_update_channel(guild: discord.Guild):
-    update_channel = discord.utils.get(
+    channel = discord.utils.get(
         guild.text_channels,
         name=UPDATE_CHANNEL_NAME
     )
 
-    if update_channel is not None:
-        return update_channel
+    if channel is not None:
+        return channel
 
-    collaboration_category = discord.utils.get(
+    category = discord.utils.get(
         guild.categories,
         name=COLLAB_CATEGORY_NAME
     )
 
-    if collaboration_category is None:
-        collaboration_category = await guild.create_category(
+    if category is None:
+        category = await guild.create_category(
             COLLAB_CATEGORY_NAME
         )
 
-    update_channel = await guild.create_text_channel(
+    return await guild.create_text_channel(
         UPDATE_CHANNEL_NAME,
-        category=collaboration_category
+        category=category
     )
 
-    return update_channel
+
+async def get_or_create_auralis_update_channel(guild: discord.Guild):
+    channel = discord.utils.get(
+        guild.text_channels,
+        name=AURALIS_UPDATE_CHANNEL
+    )
+
+    if channel is not None:
+        return channel
+
+    return await guild.create_text_channel(
+        AURALIS_UPDATE_CHANNEL
+    )
+
+
+def find_members_by_names(guild: discord.Guild, names: list[str]):
+    found_members = []
+
+    for member in guild.members:
+        if member.bot:
+            continue
+
+        for username in names:
+            clean_name = username.lower().replace("@", "")
+
+            matched = False
+
+            if member.name and member.name.lower() == clean_name:
+                matched = True
+
+            if member.display_name and member.display_name.lower() == clean_name:
+                matched = True
+
+            if member.global_name and member.global_name.lower() == clean_name:
+                matched = True
+
+            if matched:
+                found_members.append(member)
+                break
+
+    return found_members
 
 
 def find_collaborators_to_notify(
     guild: discord.Guild,
     author: discord.Member
 ):
-    members_to_notify = []
+    members = find_members_by_names(guild, COLLABORATORS)
 
-    for member in guild.members:
-
-        if member.bot:
-            continue
-
-        if member.id == author.id:
-            continue
-
-        for collaborator in COLLABORATORS:
-            username = collaborator.lower().replace("@", "")
-
-            matched = False
-
-            if member.name and member.name.lower() == username:
-                matched = True
-
-            if member.display_name and member.display_name.lower() == username:
-                matched = True
-
-            if member.global_name and member.global_name.lower() == username:
-                matched = True
-
-            if matched:
-                members_to_notify.append(member)
-                break
-
-    return members_to_notify
+    return [
+        member for member in members
+        if member.id != author.id
+    ]
 
 
 def build_mentions(
@@ -189,61 +212,34 @@ def build_mentions(
     return " ".join(
         [member.mention for member in notify_members]
     )
-async def get_or_create_auralis_update_channel(
-    guild: discord.Guild
-):
-    channel = discord.utils.get(
-        guild.text_channels,
-        name=AURALIS_UPDATE_CHANNEL
+
+
+def build_update_log_mentions(guild: discord.Guild):
+    notify_members = find_members_by_names(
+        guild,
+        UPDATE_NOTIFY_USERS
     )
-
-    if channel is not None:
-        return channel
-
-    return await guild.create_text_channel(
-        AURALIS_UPDATE_CHANNEL
-    )
-
-
-def build_update_log_mentions(
-    guild: discord.Guild
-):
-    mentions = []
-
-    for member in guild.members:
-
-        for username in UPDATE_NOTIFY_USERS:
-
-            clean_name = (
-                username.lower()
-                .replace("@", "")
-            )
-
-            matched = False
-
-            if member.name and member.name.lower() == clean_name:
-                matched = True
-
-            elif (
-                member.display_name
-                and member.display_name.lower() == clean_name
-            ):
-                matched = True
-
-            elif (
-                member.global_name
-                and member.global_name.lower() == clean_name
-            ):
-                matched = True
-
-            if matched:
-                mentions.append(
-                    member.mention
-                )
 
     return " ".join(
-        list(set(mentions))
+        list(set(member.mention for member in notify_members))
     )
+
+
+async def version_already_logged(
+    channel: discord.TextChannel,
+    version: str
+):
+    async for old_message in channel.history(limit=50):
+        if old_message.author != client.user:
+            continue
+
+        for embed in old_message.embeds:
+            for field in embed.fields:
+                if field.name == "Version" and field.value == version:
+                    return True
+
+    return False
+
 
 # ─────────────────────────────────────────────
 # Bot Ready Event
@@ -251,14 +247,11 @@ def build_update_log_mentions(
 
 @client.event
 async def on_ready():
-
     global startup_log_posted
 
     await tree.sync()
 
-    print(
-        f"Auralis is online as {client.user}"
-    )
+    print(f"Auralis is online as {client.user}")
 
     if startup_log_posted:
         return
@@ -266,25 +259,18 @@ async def on_ready():
     startup_log_posted = True
 
     for guild in client.guilds:
+        update_channel = await get_or_create_auralis_update_channel(guild)
 
-        update_channel = (
-            await get_or_create_auralis_update_channel(
-                guild
-            )
-        )
+        if await version_already_logged(update_channel, BOT_VERSION):
+            continue
 
         notes_text = "\n".join(
-            [
-                f"• {note}"
-                for note in BOT_UPDATE_NOTES
-            ]
+            [f"• {note}" for note in BOT_UPDATE_NOTES]
         )
 
         embed = discord.Embed(
             title="🚀 Auralis Updated",
-            description=(
-                "Auralis is online with the latest update."
-            ),
+            description="Auralis is online with the latest stable release.",
             color=0x00FF7F
         )
 
@@ -311,9 +297,7 @@ async def on_ready():
         )
 
         await update_channel.send(
-            content=build_update_log_mentions(
-                guild
-            ),
+            content=build_update_log_mentions(guild),
             embed=embed,
             allowed_mentions=discord.AllowedMentions(
                 users=True,
@@ -329,14 +313,17 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-
     if message.author.bot:
         return
 
     if message.guild is None:
         return
 
-    await handle_clean_update_message(message)
+    handled_update = await handle_clean_update_message(message)
+
+    if handled_update:
+        return
+
     await handle_demo_upload_message(message)
 
 
@@ -345,25 +332,33 @@ async def on_message(message: discord.Message):
 # ─────────────────────────────────────────────
 
 async def handle_clean_update_message(message: discord.Message):
+    match = re.match(
+        r"^\s*n[\s:,-]+(.+)$",
+        message.content,
+        re.IGNORECASE
+    )
 
-    if not message.content.lower().startswith("n "):
-        return
+    if not match:
+        return False
 
-    update_text = message.content[2:].strip()
+    update_text = match.group(1).strip()
 
     if not update_text:
-        return
+        return False
 
     update_channel = await get_or_create_update_channel(
         message.guild
     )
 
     try:
-        await message.edit(
-            content=update_text
-        )
+        await message.delete()
     except Exception as error:
-        print(f"Failed to edit message: {error}")
+        print(f"Failed to delete raw update message: {error}")
+
+    try:
+        await message.channel.send(update_text)
+    except Exception as error:
+        print(f"Failed to repost clean update message: {error}")
 
     mention_text = build_mentions(
         message.guild,
@@ -396,12 +391,6 @@ async def handle_clean_update_message(message: discord.Message):
         inline=False
     )
 
-    embed.add_field(
-        name="Original Message",
-        value=f"[Open Message]({message.jump_url})",
-        inline=False
-    )
-
     embed.set_footer(
         text="Auralis • Song Collaboration Log"
     )
@@ -416,13 +405,14 @@ async def handle_clean_update_message(message: discord.Message):
         )
     )
 
+    return True
+
 
 # ─────────────────────────────────────────────
 # Automatic Demo Upload System
 # ─────────────────────────────────────────────
 
 async def handle_demo_upload_message(message: discord.Message):
-
     if "song-demos" not in message.channel.name:
         return
 
@@ -533,7 +523,6 @@ async def handle_demo_upload_message(message: discord.Message):
 )
 @app_commands.describe(title="Song title")
 async def newsong(interaction: discord.Interaction, title: str):
-
     guild = interaction.guild
 
     if guild is None:
@@ -579,7 +568,6 @@ async def newsong(interaction: discord.Interaction, title: str):
     description="Add missing song-demos channels to existing song categories."
 )
 async def add_demos_channels(interaction: discord.Interaction):
-
     guild = interaction.guild
 
     if guild is None:
@@ -604,7 +592,6 @@ async def add_demos_channels(interaction: discord.Interaction):
     added_channels = []
 
     for category in guild.categories:
-
         if not is_song_category(category):
             continue
 
@@ -612,9 +599,7 @@ async def add_demos_channels(interaction: discord.Interaction):
             category.name
         )
 
-        demo_channel_name = (
-            f"{clean_name}-song-demos"
-        )
+        demo_channel_name = f"{clean_name}-song-demos"
 
         existing_channel = discord.utils.get(
             category.channels,
@@ -634,7 +619,6 @@ async def add_demos_channels(interaction: discord.Interaction):
         )
 
     if added_channels:
-
         added_text = "\n".join(
             [f"• {item}" for item in added_channels]
         )
@@ -649,9 +633,7 @@ async def add_demos_channels(interaction: discord.Interaction):
             embed=embed,
             ephemeral=True
         )
-
     else:
-
         await interaction.followup.send(
             "No missing demo channels found.",
             ephemeral=True
@@ -663,9 +645,7 @@ async def add_demos_channels(interaction: discord.Interaction):
 # ─────────────────────────────────────────────
 
 class CategoryDeleteSelect(discord.ui.Select):
-
     def __init__(self, categories):
-
         options = [
             discord.SelectOption(
                 label=category.name[:100],
@@ -680,7 +660,6 @@ class CategoryDeleteSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction):
-
         category_id = int(self.values[0])
 
         category = discord.utils.get(
@@ -707,7 +686,6 @@ class CategoryDeleteSelect(discord.ui.Select):
 
 
 class CategoryDeleteView(discord.ui.View):
-
     def __init__(self, categories):
         super().__init__(timeout=300)
         self.add_item(
@@ -724,7 +702,6 @@ class CategoryDeleteView(discord.ui.View):
     description="Delete a category and all channels."
 )
 async def clean_categories(interaction):
-
     guild = interaction.guild
 
     if guild is None:
@@ -757,9 +734,7 @@ async def clean_categories(interaction):
 # ─────────────────────────────────────────────
 
 class ChannelDeleteSelect(discord.ui.Select):
-
     def __init__(self, channels):
-
         options = [
             discord.SelectOption(
                 label=channel.name[:100],
@@ -776,14 +751,12 @@ class ChannelDeleteSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction):
-
         await interaction.response.send_message(
             "Deleting selected channels...",
             ephemeral=True
         )
 
         for value in self.values:
-
             channel_id = int(value)
 
             channel = discord.utils.get(
@@ -792,7 +765,6 @@ class ChannelDeleteSelect(discord.ui.Select):
             )
 
             if channel is not None:
-
                 try:
                     await channel.delete()
                 except Exception as error:
@@ -800,7 +772,6 @@ class ChannelDeleteSelect(discord.ui.Select):
 
 
 class ChannelDeleteView(discord.ui.View):
-
     def __init__(self, channels):
         super().__init__(timeout=300)
         self.add_item(
@@ -817,7 +788,6 @@ class ChannelDeleteView(discord.ui.View):
     description="Delete multiple channels."
 )
 async def clean_channels(interaction):
-
     guild = interaction.guild
 
     if guild is None:
@@ -854,13 +824,9 @@ async def clean_channels(interaction):
     description="Show Auralis command list."
 )
 async def help_command(interaction):
-
     embed = discord.Embed(
         title="Auralis Commands",
-        description=(
-            "Organization and collaboration "
-            "tools for songwriting."
-        ),
+        description="Organization and collaboration tools for songwriting.",
         color=0x00FF7F
     )
 
@@ -872,10 +838,7 @@ async def help_command(interaction):
 
     embed.add_field(
         name="/add_demos_channels",
-        value=(
-            "Add missing song-demos "
-            "channels to old projects."
-        ),
+        value="Add missing song-demos channels to old projects.",
         inline=False
     )
 
@@ -894,32 +857,4 @@ async def help_command(interaction):
     embed.add_field(
         name="n / N your message",
         value=(
-            "Type `n your update` or `N your update`. "
-            "Auralis edits your message cleanly, removes "
-            "the prompt, logs it in #song-updates, and tags "
-            "the other collaborator."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="Demo Uploads",
-        value=(
-            "Upload MP3, WAV, M4A, FLAC, or OGG files "
-            "inside any song-demos channel. Auralis logs it "
-            "in #song-updates and tags the other collaborator."
-        ),
-        inline=False
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
-
-
-# ─────────────────────────────────────────────
-# Run Bot
-# ─────────────────────────────────────────────
-
-client.run(TOKEN)
+            "Type `n your update`, `N your updat
