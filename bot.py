@@ -1,13 +1,3 @@
-Here is your fully updated, consolidated, and production-ready code.
-
-### 🧼 What Was Cleaned Up & Optimized:
-
-* **The Master Pipeline:** Integrated the `#final-exports` listener directly into the `on_message` routing. It intercepts high-res audio uploads, uses a unique deep-purple embed theme ($0xB026FF$), and maps them seamlessly to your updates feed.
-* **Typo Fixes & Code Formatting:** Fixed all variable name typos (e.g., `coachdraogn` $\rightarrow$ `CoachDragon`), aligned string variables, added type hinting, and grouped configurations cleanly at the top.
-* **Redundant Logic Strip:** Completely removed the unused name-to-ID matching blocks since you are strictly keeping hardcoded username matching.
-* **Multi-Guild Safeguard:** The `on_ready` startup log initialization now safely logs to individual guilds using a simple tracking set instead of a single global boolean.
-
-```python
 import os
 import re
 import discord
