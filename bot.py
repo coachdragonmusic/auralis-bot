@@ -1,3 +1,6 @@
+Here is your completely updated, unified, and syntax-scrubbed script with the `max_values` UI fix applied.
+
+```python
 import os
 import re
 import discord
@@ -437,7 +440,7 @@ class ChannelDeleteSelect(discord.ui.Select):
         super().__init__(
             placeholder="Choose channels to delete...",
             min_values=1,
-            max_values=min(len(options), 25),
+            max_values=len(options),
             options=options
         )
 
