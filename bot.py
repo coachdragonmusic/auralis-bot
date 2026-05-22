@@ -47,7 +47,7 @@ BOT_UPDATE_NOTES = [
     "Added song-demos channels.",
     "Added /add_demos_channels for older song projects.",
     "Added automatic demo upload tracking for MP3, WAV, M4A, FLAC, and OGG files.",
-    "Added #auralis-update-log deployment logging."
+    "Added #auralis-update-log deployment logging.",
     "Added clean author-attributed update reposting.",
 ]
 
@@ -352,16 +352,13 @@ async def handle_clean_update_message(message: discord.Message):
     )
 
     try:
-        await message.delete()
-    except Exception as error:
-        print(f"Failed to delete raw update message: {error}")
-
-    try:
     await message.channel.send(
         f"📝 **{message.author.display_name}**\n\n{update_text}"
     )
 except Exception as error:
-    print(f"Failed to repost clean update message: {error}")
+    print(
+        f"Failed to repost clean update message: {error}"
+    )
 
     mention_text = build_mentions(
         message.guild,
