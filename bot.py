@@ -333,19 +333,25 @@ async def on_message(message: discord.Message):
 # ─────────────────────────────────────────────
 
 async def handle_clean_update_message(message: discord.Message):
+    # Matches 'n' or 'N' at the start of a message followed by punctuation/spaces
     match = re.match(
-        r"^\s*n[\s:,-]+(.+)$",
-        message.content,
-        re.IGNORECASE
+        r"^\s*([nN])[\s:,-]+(.+)$",
+        message.content
     )
 
     if not match:
         return False
 
-    update_text = match.group(1).strip()
+    update_text = match.group(2).strip()
 
     if not update_text:
         return False
+
+    # Delete the original "n update text" trigger message
+    try:
+        await message.delete()
+    except Exception as error:
+        print(f"Failed to delete original update trigger message: {error}")
 
     update_channel = await get_or_create_update_channel(
         message.guild
