@@ -48,7 +48,7 @@ BOT_UPDATE_NOTES = [
     "Added /add_demos_channels for older song projects.",
     "Added automatic demo upload tracking for MP3, WAV, M4A, FLAC, and OGG files.",
     "Added #auralis-update-log deployment logging.",
-    "Added clean author-attributed update reposting."
+    "Added clean author-attributed update reposting.",
 ]
 
 COLLABORATORS = [
@@ -123,15 +123,23 @@ def is_song_category(category: discord.CategoryChannel) -> bool:
 
 
 async def get_or_create_update_channel(guild: discord.Guild):
-    channel = discord.utils.get(guild.text_channels, name=UPDATE_CHANNEL_NAME)
+    channel = discord.utils.get(
+        guild.text_channels,
+        name=UPDATE_CHANNEL_NAME
+    )
 
     if channel is not None:
         return channel
 
-    category = discord.utils.get(guild.categories, name=COLLAB_CATEGORY_NAME)
+    category = discord.utils.get(
+        guild.categories,
+        name=COLLAB_CATEGORY_NAME
+    )
 
     if category is None:
-        category = await guild.create_category(COLLAB_CATEGORY_NAME)
+        category = await guild.create_category(
+            COLLAB_CATEGORY_NAME
+        )
 
     return await guild.create_text_channel(
         UPDATE_CHANNEL_NAME,
@@ -140,12 +148,17 @@ async def get_or_create_update_channel(guild: discord.Guild):
 
 
 async def get_or_create_auralis_update_channel(guild: discord.Guild):
-    channel = discord.utils.get(guild.text_channels, name=AURALIS_UPDATE_CHANNEL)
+    channel = discord.utils.get(
+        guild.text_channels,
+        name=AURALIS_UPDATE_CHANNEL
+    )
 
     if channel is not None:
         return channel
 
-    return await guild.create_text_channel(AURALIS_UPDATE_CHANNEL)
+    return await guild.create_text_channel(
+        AURALIS_UPDATE_CHANNEL
+    )
 
 
 def find_members_by_names(guild: discord.Guild, names: list[str]):
@@ -176,7 +189,10 @@ def find_members_by_names(guild: discord.Guild, names: list[str]):
     return found_members
 
 
-def find_collaborators_to_notify(guild: discord.Guild, author: discord.Member):
+def find_collaborators_to_notify(
+    guild: discord.Guild,
+    author: discord.Member
+):
     members = find_members_by_names(guild, COLLABORATORS)
 
     return [
@@ -185,19 +201,35 @@ def find_collaborators_to_notify(guild: discord.Guild, author: discord.Member):
     ]
 
 
-def build_mentions(guild: discord.Guild, author: discord.Member):
-    notify_members = find_collaborators_to_notify(guild, author)
+def build_mentions(
+    guild: discord.Guild,
+    author: discord.Member
+):
+    notify_members = find_collaborators_to_notify(
+        guild,
+        author
+    )
 
-    return " ".join([member.mention for member in notify_members])
+    return " ".join(
+        [member.mention for member in notify_members]
+    )
 
 
 def build_update_log_mentions(guild: discord.Guild):
-    notify_members = find_members_by_names(guild, UPDATE_NOTIFY_USERS)
+    notify_members = find_members_by_names(
+        guild,
+        UPDATE_NOTIFY_USERS
+    )
 
-    return " ".join(list(set(member.mention for member in notify_members)))
+    return " ".join(
+        list(set(member.mention for member in notify_members))
+    )
 
 
-async def version_already_logged(channel: discord.TextChannel, version: str):
+async def version_already_logged(
+    channel: discord.TextChannel,
+    version: str
+):
     async for old_message in channel.history(limit=50):
         if old_message.author != client.user:
             continue
@@ -233,7 +265,9 @@ async def on_ready():
         if await version_already_logged(update_channel, BOT_VERSION):
             continue
 
-        notes_text = "\n".join([f"• {note}" for note in BOT_UPDATE_NOTES])
+        notes_text = "\n".join(
+            [f"• {note}" for note in BOT_UPDATE_NOTES]
+        )
 
         embed = discord.Embed(
             title="🚀 Auralis Updated",
@@ -241,11 +275,27 @@ async def on_ready():
             color=0x00FF7F
         )
 
-        embed.add_field(name="Version", value=BOT_VERSION, inline=True)
-        embed.add_field(name="Status", value="Online", inline=True)
-        embed.add_field(name="Changes", value=notes_text, inline=False)
+        embed.add_field(
+            name="Version",
+            value=BOT_VERSION,
+            inline=True
+        )
 
-        embed.set_footer(text="Auralis • Update Log")
+        embed.add_field(
+            name="Status",
+            value="Online",
+            inline=True
+        )
+
+        embed.add_field(
+            name="Changes",
+            value=notes_text,
+            inline=False
+        )
+
+        embed.set_footer(
+            text="Auralis • Update Log"
+        )
 
         await update_channel.send(
             content=build_update_log_mentions(guild),
@@ -297,21 +347,23 @@ async def handle_clean_update_message(message: discord.Message):
     if not update_text:
         return False
 
-    update_channel = await get_or_create_update_channel(message.guild)
-
-    try:
-        await message.delete()
-    except Exception as error:
-        print(f"Failed to delete raw update message: {error}")
+    update_channel = await get_or_create_update_channel(
+        message.guild
+    )
 
     try:
         await message.channel.send(
             f"📝 **{message.author.display_name}**\n\n{update_text}"
         )
     except Exception as error:
-        print(f"Failed to repost clean update message: {error}")
+        print(
+            f"Failed to repost clean update message: {error}"
+        )
 
-    mention_text = build_mentions(message.guild, message.author)
+    mention_text = build_mentions(
+        message.guild,
+        message.author
+    )
 
     now = discord.utils.utcnow()
 
@@ -321,11 +373,27 @@ async def handle_clean_update_message(message: discord.Message):
         color=0x00FF7F
     )
 
-    embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-    embed.add_field(name="Updated By", value=message.author.mention, inline=True)
-    embed.add_field(name="Time", value=discord.utils.format_dt(now, style="F"), inline=False)
+    embed.add_field(
+        name="Channel",
+        value=message.channel.mention,
+        inline=True
+    )
 
-    embed.set_footer(text="Auralis • Song Collaboration Log")
+    embed.add_field(
+        name="Updated By",
+        value=message.author.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Time",
+        value=discord.utils.format_dt(now, style="F"),
+        inline=False
+    )
+
+    embed.set_footer(
+        text="Auralis • Song Collaboration Log"
+    )
 
     await update_channel.send(
         content=mention_text,
@@ -359,13 +427,20 @@ async def handle_demo_upload_message(message: discord.Message):
     if not audio_files:
         return
 
-    update_channel = await get_or_create_update_channel(message.guild)
+    update_channel = await get_or_create_update_channel(
+        message.guild
+    )
 
-    mention_text = build_mentions(message.guild, message.author)
+    mention_text = build_mentions(
+        message.guild,
+        message.author
+    )
 
     now = discord.utils.utcnow()
 
-    song_name = get_song_name_from_channel(message.channel.name)
+    song_name = get_song_name_from_channel(
+        message.channel.name
+    )
 
     note_text = message.content.strip()
 
@@ -381,19 +456,51 @@ async def handle_demo_upload_message(message: discord.Message):
         color=0x00FF7F
     )
 
-    embed.add_field(name="Song", value=song_name, inline=True)
-    embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-    embed.add_field(name="Uploaded By", value=message.author.mention, inline=True)
-    embed.add_field(name="File", value=file_text, inline=False)
-    embed.add_field(name="Notes", value=note_text, inline=False)
-    embed.add_field(name="Time", value=discord.utils.format_dt(now, style="F"), inline=False)
+    embed.add_field(
+        name="Song",
+        value=song_name,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Channel",
+        value=message.channel.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Uploaded By",
+        value=message.author.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="File",
+        value=file_text,
+        inline=False
+    )
+
+    embed.add_field(
+        name="Notes",
+        value=note_text,
+        inline=False
+    )
+
+    embed.add_field(
+        name="Time",
+        value=discord.utils.format_dt(now, style="F"),
+        inline=False
+    )
+
     embed.add_field(
         name="Original Upload",
         value=f"[Open Original Upload]({message.jump_url})",
         inline=False
     )
 
-    embed.set_footer(text="Auralis • Demo Upload Log")
+    embed.set_footer(
+        text="Auralis • Demo Upload Log"
+    )
 
     await update_channel.send(
         content=mention_text,
@@ -432,7 +539,9 @@ async def newsong(interaction: discord.Interaction, title: str):
 
     clean_name = clean_channel_name(title)
 
-    category = await guild.create_category(f"🎵 {title}")
+    category = await guild.create_category(
+        f"🎵 {title}"
+    )
 
     channels = [
         f"{clean_name}-lyrics",
@@ -486,7 +595,9 @@ async def add_demos_channels(interaction: discord.Interaction):
         if not is_song_category(category):
             continue
 
-        clean_name = clean_song_category_name(category.name)
+        clean_name = clean_song_category_name(
+            category.name
+        )
 
         demo_channel_name = f"{clean_name}-song-demos"
 
@@ -577,7 +688,9 @@ class CategoryDeleteSelect(discord.ui.Select):
 class CategoryDeleteView(discord.ui.View):
     def __init__(self, categories):
         super().__init__(timeout=300)
-        self.add_item(CategoryDeleteSelect(categories))
+        self.add_item(
+            CategoryDeleteSelect(categories)
+        )
 
 
 # ─────────────────────────────────────────────
@@ -661,7 +774,9 @@ class ChannelDeleteSelect(discord.ui.Select):
 class ChannelDeleteView(discord.ui.View):
     def __init__(self, channels):
         super().__init__(timeout=300)
-        self.add_item(ChannelDeleteSelect(channels))
+        self.add_item(
+            ChannelDeleteSelect(channels)
+        )
 
 
 # ─────────────────────────────────────────────
@@ -741,32 +856,12 @@ async def help_command(interaction):
 
     embed.add_field(
         name="n / N your message",
-        value=(
-            "Type `n your update`, `N your update`, `n: your update`, "
-            "or `N - your update`. Auralis reposts it cleanly with your "
-            "display name, logs it in #song-updates, and tags the other collaborator."
-        ),
+        value="Type `n your update` or `N your update` to quickly document notes.",
         inline=False
     )
 
-    embed.add_field(
-        name="Demo Uploads",
-        value=(
-            "Upload MP3, WAV, M4A, FLAC, or OGG files inside any "
-            "song-demos channel. Auralis logs it in #song-updates "
-            "and tags the other collaborator."
-        ),
-        inline=False
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-# ─────────────────────────────────────────────
-# Run Bot
-# ─────────────────────────────────────────────
-
-client.run(TOKEN)
+# Don't forget to run your client at the bottom of your script!
+# client.run(TOKEN)
