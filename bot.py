@@ -1,6 +1,3 @@
-Here is your fully updated, consolidated script. I have applied the `max_values=len(options)` dynamic UI fix to `ChannelDeleteSelect` so it won't crash when servers have fewer than 25 channels, and I have scrubbed out all of the weird spacing compression that happened during transmission to restore clean PEP 8 indentation.
-
-```python
 import os
 import re
 import discord
@@ -513,5 +510,3 @@ async def help_command(interaction: discord.Interaction):
 # ─────────────────────────────────────────────
 
 client.run(TOKEN)
-
-```
